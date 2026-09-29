@@ -258,7 +258,7 @@ export function OpeningScene({ onComplete }: OpeningSceneProps) {
     animate()
 
     const textDelay = reduced ? 500 : 3500
-    const skipDelay = reduced ? 800 : 5000
+    const skipDelay = reduced ? 800 : 2500
 
     const textTimer = setTimeout(() => setShowText(true), textDelay)
     const skipTimer = setTimeout(() => setShowSkip(true), skipDelay)
