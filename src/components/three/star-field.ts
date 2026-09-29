@@ -234,6 +234,7 @@ void main() {
   color += uMoonColor * craterRim * 0.35 * light;
 
   color *= 0.1 + light * 0.9;
+  color = mix(color, vec3(0.78, 0.82, 0.91), 0.18);
 
   float edgeGlow = pow(1.0 - max(dot(normal, vec3(0.0, 0.0, 1.0)), 0.0), 2.5);
   color += mix(uMoonColor, vec3(1.0, 0.95, 0.85), 0.4) * edgeGlow * 0.12 * light;

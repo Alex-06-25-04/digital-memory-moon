@@ -156,7 +156,7 @@ export const experienceConfig: ExperienceConfig = {
     starColor: "#e8e4ff",
     constellationColor: "#f5d98a",
     accentColor: "#c9b8ff",
-    moonColor: "#f0eede",
+    moonColor: "#c8cdd6",
   },
   audio: {
     src: undefined,
