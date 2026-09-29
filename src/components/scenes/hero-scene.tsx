@@ -177,6 +177,24 @@ export function HeroScene() {
       depths[i] = Math.random()
     }
 
+    // 15 stelle àncora: brightness fissa 1.0, size maggiore,
+    // distribuite nella semisfera superiore come punti di riferimento visivi.
+    for (let i = 0; i < 15; i++) {
+      const radius = 40 + Math.random() * 60
+      const theta = Math.random() * Math.PI * 2
+      const phi = Math.acos(Math.random()) // phi < PI/2 → semisfera superiore
+
+      positions[i * 3] = radius * Math.sin(phi) * Math.cos(theta)
+      positions[i * 3 + 1] = radius * Math.cos(phi)
+      positions[i * 3 + 2] = radius * Math.sin(phi) * Math.sin(theta)
+
+      sizes[i] = 3.5 + Math.random() * 1.5
+      brightnesses[i] = 1.0
+      twinklePhases[i] = Math.random() * Math.PI * 2
+      twinkleSpeeds[i] = Math.random() * 1.5 + 0.3
+      depths[i] = Math.random()
+    }
+
     starGeometry.setAttribute("position", new THREE.BufferAttribute(positions, 3))
     starGeometry.setAttribute("aSize", new THREE.BufferAttribute(sizes, 1))
     starGeometry.setAttribute("aBrightness", new THREE.BufferAttribute(brightnesses, 1))
