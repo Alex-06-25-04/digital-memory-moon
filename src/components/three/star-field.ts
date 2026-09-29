@@ -309,8 +309,8 @@ function generateConstellationPoints(
   return points
 }
 
-const MOON_CENTER = new THREE.Vector3(10, 30, -80)
-const MOON_RADIUS = 15
+const MOON_CENTER = new THREE.Vector3(0, 38, -80)
+const MOON_RADIUS = 24
 // Nessuna stella di sfondo viene generata più vicina di questo raggio dal
 // centro della luna, per evitare che le stelle appaiano "dentro" il globo.
 const MOON_EXCLUSION_RADIUS = MOON_RADIUS + 10
@@ -704,8 +704,8 @@ export function createStarField(
     }
 
     moonMaterial.uniforms.uProgress.value = moonProgress
-    moon.position.y = 30 - moonProgress * 35
-    moon.position.x = 10 - moonProgress * 5
+    moon.position.z = -80 + moonProgress * 15
+    moon.position.y = 38 + moonProgress * 4
 
     memMaterials.forEach((m, i) => {
       m.uniforms.uTime.value = elapsed
