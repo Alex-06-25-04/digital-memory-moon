@@ -16,60 +16,94 @@ interface Star {
   twinkleSpeed: number
 }
 
+interface ActiveStar extends Star {
+  startX: number
+  startY: number
+  targetX: number
+  targetY: number
+  delay: number
+  duration: number
+  startSize: number
+  targetSize: number
+  startBrightness: number
+  targetBrightness: number
+  letterIndex: number
+  arrived: boolean
+}
+
+interface LetterPoints {
+  points: { x: number; y: number }[]
+  minX: number
+  maxX: number
+  minY: number
+  maxY: number
+}
+
 const INITIALS = experienceConfig.couple.initials
-const STAR_COUNT = 440
+const BG_STAR_COUNT = 300
+const POINTS_PER_LETTER = 16
+const MIN_POINTS = 14
+const MAX_POINTS = 18
+const OFFSCREEN_FONT_SIZE = 200
+const LINE_MAX_OPACITY = 0.35
+const LINE_FADE_DURATION = 800
+const STAR_MIN_DURATION = 1.8
+const STAR_MAX_DURATION = 2.2
+const STAGGER_MIN = 80
+const STAGGER_MAX = 120
 
-function getInitialsPoints(width: number, height: number): { x: number; y: number }[] {
-  const canvas = document.createElement("canvas")
-  canvas.width = width
-  canvas.height = height
-  const ctx = canvas.getContext("2d")
-  if (!ctx) return []
+function getLetterPoints(
+  char: string,
+  canvasWidth: number,
+  canvasHeight: number,
+  centerX: number,
+  centerY: number
+): LetterPoints | null {
+  const offCanvas = document.createElement("canvas")
+  offCanvas.width = canvasWidth
+  offCanvas.height = canvasHeight
+  const offCtx = offCanvas.getContext("2d")
+  if (!offCtx) return null
 
-  const fontSize = Math.min(width, height) * 0.22
-  // Peso 500 invece di 200: un tratto più spesso significa più pixel accesi
-  // per lettera, quindi più margine per far leggere la forma anche con un
-  // numero di stelle limitato.
-  const fontString = `500 ${fontSize}px "Cormorant Garamond", Georgia, serif`
-  ctx.font = fontString
-  ctx.textAlign = "center"
-  ctx.textBaseline = "middle"
-  ctx.fillStyle = "#fff"
-  ctx.fillText(INITIALS, width / 2, height / 2)
+  offCtx.font = `500 ${OFFSCREEN_FONT_SIZE}px "Playfair Display", Georgia, serif`
+  offCtx.textAlign = "center"
+  offCtx.textBaseline = "middle"
+  offCtx.fillStyle = "#fff"
+  offCtx.fillText(char, centerX, centerY)
 
-  const imageData = ctx.getImageData(0, 0, width, height)
+  const imageData = offCtx.getImageData(0, 0, canvasWidth, canvasHeight)
   const rawPoints: { x: number; y: number }[] = []
-  const step = Math.max(3, Math.floor(width / 260))
+  const step = 3
 
-  for (let y = 0; y < height; y += step) {
-    for (let x = 0; x < width; x += step) {
-      const idx = (y * width + x) * 4
-      if (imageData.data[idx + 3] > 128) {
-        rawPoints.push({ x, y })
-      }
-    }
-  }
-
-  if (rawPoints.length === 0) return []
-
-  // Campionamento a griglia invece che un sottoinsieme puramente casuale:
-  // prima capitava che, per puro caso, alcune zone della scritta restassero
-  // vuote mentre altre erano affollate. Dividendo l'area in celle e
-  // prendendo una stella per cella occupata, la copertura è uniforme su
-  // tutta la forma delle iniziali.
   let minX = Infinity
   let maxX = -Infinity
   let minY = Infinity
   let maxY = -Infinity
-  for (const p of rawPoints) {
-    if (p.x < minX) minX = p.x
-    if (p.x > maxX) maxX = p.x
-    if (p.y < minY) minY = p.y
-    if (p.y > maxY) maxY = p.y
-  }
-  const boxArea = Math.max(1, maxX - minX) * Math.max(1, maxY - minY)
-  const cellSize = Math.max(3, Math.sqrt(boxArea / STAR_COUNT))
 
+  for (let y = 0; y < canvasHeight; y += step) {
+    for (let x = 0; x < canvasWidth; x += step) {
+      const idx = (y * canvasWidth + x) * 4
+      if (imageData.data[idx + 3] > 128) {
+        rawPoints.push({ x, y })
+        if (x < minX) minX = x
+        if (x > maxX) maxX = x
+        if (y < minY) minY = y
+        if (y > maxY) maxY = y
+      }
+    }
+  }
+
+  if (rawPoints.length === 0) return null
+
+  const boxArea = Math.max(1, maxX - minX) * Math.max(1, maxY - minY)
+  const targetCount = Math.min(
+    MAX_POINTS,
+    Math.max(MIN_POINTS, POINTS_PER_LETTER)
+  )
+
+  // Stratified grid sampling: divide bounding box into cells, pick one point
+  // per occupied cell, then trim or expand to hit the target count.
+  const cellSize = Math.max(3, Math.sqrt(boxArea / targetCount))
   const cells = new Map<string, { x: number; y: number }[]>()
   for (const p of rawPoints) {
     const key = `${Math.floor((p.x - minX) / cellSize)},${Math.floor((p.y - minY) / cellSize)}`
@@ -78,19 +112,181 @@ function getInitialsPoints(width: number, height: number): { x: number; y: numbe
     else cells.set(key, [p])
   }
 
-  const points: { x: number; y: number }[] = []
+  const sampled: { x: number; y: number }[] = []
   cells.forEach((arr) => {
-    points.push(arr[Math.floor(Math.random() * arr.length)])
+    sampled.push(arr[Math.floor(Math.random() * arr.length)])
   })
 
-  // Mescolo comunque l'ordine finale (non la posizione) così un'eventuale
-  // animazione sequenziale non segue un pattern a griglia visibile.
-  for (let i = points.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1))
-    ;[points[i], points[j]] = [points[j], points[i]]
+  // If we got more points than needed, randomly trim
+  if (sampled.length > MAX_POINTS) {
+    for (let i = sampled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1))
+      ;[sampled[i], sampled[j]] = [sampled[j], sampled[i]]
+    }
+    sampled.length = MAX_POINTS
   }
 
-  return points
+  // If we got fewer than MIN_POINTS, relax the grid and add more
+  if (sampled.length < MIN_POINTS) {
+    const remaining = rawPoints.filter(
+      (p) => !sampled.some((s) => s.x === p.x && s.y === p.y)
+    )
+    while (sampled.length < MIN_POINTS && remaining.length > 0) {
+      const idx = Math.floor(Math.random() * remaining.length)
+      sampled.push(remaining[idx])
+      remaining.splice(idx, 1)
+    }
+  }
+
+  // Shuffle order so sequential animation doesn't follow a grid pattern
+  for (let i = sampled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[sampled[i], sampled[j]] = [sampled[j], sampled[i]]
+  }
+
+  return {
+    points: sampled,
+    minX,
+    maxX,
+    minY,
+    maxY,
+  }
+}
+
+function getInitialsLayout(
+  displayWidth: number,
+  displayHeight: number
+): { points: { x: number; y: number; letterIndex: number }[]; letters: string[] } {
+  // Parse individual visible characters (skip spaces)
+  const chars = INITIALS.split("").filter((c) => c.trim().length > 0)
+  if (chars.length === 0) return { points: [], letters: [] }
+
+  // Measure each character in the offscreen font to compute layout widths
+  const measureCanvas = document.createElement("canvas")
+  const measureCtx = measureCanvas.getContext("2d")
+  if (!measureCtx) return { points: [], letters: [] }
+
+  const fontString = `500 ${OFFSCREEN_FONT_SIZE}px "Playfair Display", Georgia, serif`
+  measureCtx.font = fontString
+
+  const spacing = OFFSCREEN_FONT_SIZE * 0.15
+  const widths = chars.map((c) => measureCtx.measureText(c).width)
+  const totalWidth = widths.reduce((s, w) => s + w, 0) + spacing * (chars.length - 1)
+
+  // Offscreen canvas sized to fit the full text
+  const offWidth = Math.ceil(totalWidth + OFFSCREEN_FONT_SIZE)
+  const offHeight = Math.ceil(OFFSCREEN_FONT_SIZE * 1.5)
+
+  const startX = (offWidth - totalWidth) / 2
+  const centerY = offHeight / 2
+
+  const allPoints: { x: number; y: number; letterIndex: number }[] = []
+  let cursorX = startX
+
+  for (let li = 0; li < chars.length; li++) {
+    const char = chars[li]
+    const charWidth = widths[li]
+    const charCenterX = cursorX + charWidth / 2
+
+    const letterData = getLetterPoints(
+      char,
+      offWidth,
+      offHeight,
+      charCenterX,
+      centerY
+    )
+
+    if (letterData) {
+      // Scale from offscreen coordinates to display canvas coordinates
+      const scaleX = displayWidth / offWidth
+      const scaleY = displayHeight / offHeight
+      const scale = Math.min(scaleX, scaleY) * 0.85
+      const offsetX = (displayWidth - offWidth * scale) / 2
+      const offsetY = (displayHeight - offHeight * scale) / 2
+
+      for (const pt of letterData.points) {
+        allPoints.push({
+          x: pt.x * scale + offsetX,
+          y: pt.y * scale + offsetY,
+          letterIndex: li,
+        })
+      }
+    }
+
+    cursorX += charWidth + spacing
+  }
+
+  return { points: allPoints, letters: chars }
+}
+
+function assignStarsByNearestDistance(
+  bgStars: Star[],
+  targetPoints: { x: number; y: number; letterIndex: number }[]
+): number[] {
+  // For each target point, find the nearest unassigned bg star.
+  // This minimizes travel distance and reduces crossing trajectories.
+  const assigned = new Set<number>()
+  const assignment = new Array(targetPoints.length).fill(-1)
+
+  // Process targets in order; for each, pick the nearest free star
+  for (let i = 0; i < targetPoints.length; i++) {
+    const tp = targetPoints[i]
+    let bestDist = Infinity
+    let bestStar = -1
+
+    for (let j = 0; j < bgStars.length; j++) {
+      if (assigned.has(j)) continue
+      const dx = bgStars[j].x - tp.x
+      const dy = bgStars[j].y - tp.y
+      const dist = dx * dx + dy * dy
+      if (dist < bestDist) {
+        bestDist = dist
+        bestStar = j
+      }
+    }
+
+    if (bestStar >= 0) {
+      assignment[i] = bestStar
+      assigned.add(bestStar)
+    }
+  }
+
+  return assignment
+}
+
+function buildLetterLines(
+  targetPoints: { x: number; y: number; letterIndex: number }[]
+): { from: number; to: number }[] {
+  // For each point, connect to the 2 nearest points of the same letter.
+  // Avoid duplicate edges and self-loops.
+  const lines: { from: number; to: number }[] = []
+  const seen = new Set<string>()
+
+  for (let i = 0; i < targetPoints.length; i++) {
+    const tp = targetPoints[i]
+    const sameLetter: { idx: number; dist: number }[] = []
+
+    for (let j = 0; j < targetPoints.length; j++) {
+      if (j === i) continue
+      if (targetPoints[j].letterIndex !== tp.letterIndex) continue
+      const dx = targetPoints[j].x - tp.x
+      const dy = targetPoints[j].y - tp.y
+      sameLetter.push({ idx: j, dist: dx * dx + dy * dy })
+    }
+
+    sameLetter.sort((a, b) => a.dist - b.dist)
+
+    for (let k = 0; k < Math.min(2, sameLetter.length); k++) {
+      const j = sameLetter[k].idx
+      const key = i < j ? `${i}-${j}` : `${j}-${i}`
+      if (!seen.has(key)) {
+        seen.add(key)
+        lines.push({ from: i, to: j })
+      }
+    }
+  }
+
+  return lines
 }
 
 export function OpeningScene({ onComplete }: OpeningSceneProps) {
@@ -126,15 +322,15 @@ export function OpeningScene({ onComplete }: OpeningSceneProps) {
     const width = canvas.width
     const height = canvas.height
 
-    let frame = 0
-    let revealIndex = 0
-    let bgRevealIndex = 0
     let raf = 0
     let cancelled = false
+    let animationStartTime = 0
+    let linesStartTime = 0
+    let allArrived = false
 
-    const stars: Star[] = []
+    // Background stars — all stars start as background, some get promoted to active
     const bgStars: Star[] = []
-    for (let i = 0; i < 200; i++) {
+    for (let i = 0; i < BG_STAR_COUNT; i++) {
       bgStars.push({
         x: Math.random() * width,
         y: Math.random() * height,
@@ -146,33 +342,60 @@ export function OpeningScene({ onComplete }: OpeningSceneProps) {
       })
     }
 
-    const fontSize = Math.min(width, height) * 0.22
-    const fontString = `500 ${fontSize}px "Cormorant Garamond"`
+    const activeStars: ActiveStar[] = []
+    let targetPoints: { x: number; y: number; letterIndex: number }[] = []
+    let letterLines: { from: number; to: number }[] = []
     let populated = false
 
     const populateInitialStars = () => {
       if (cancelled || populated) return
       populated = true
-      const targetPoints = getInitialsPoints(width, height)
-      const starCount = Math.min(STAR_COUNT, targetPoints.length)
-      for (let i = 0; i < starCount; i++) {
-        const pt = targetPoints[i]
-        stars.push({
-          x: pt.x + (Math.random() - 0.5) * 3,
-          y: pt.y + (Math.random() - 0.5) * 3,
-          size: (Math.random() * 1.6 + 1.0) * dpr,
-          opacity: 0,
-          targetOpacity: Math.random() * 0.35 + 0.65,
-          twinklePhase: Math.random() * Math.PI * 2,
-          twinkleSpeed: Math.random() * 0.02 + 0.005,
+
+      const layout = getInitialsLayout(width, height)
+      targetPoints = layout.points
+
+      if (targetPoints.length === 0) return
+
+      // Assign nearest bg stars to each target point
+      const assignments = assignStarsByNearestDistance(bgStars, targetPoints)
+
+      for (let i = 0; i < targetPoints.length; i++) {
+        const starIdx = assignments[i]
+        if (starIdx < 0) continue
+
+        const bgStar = bgStars[starIdx]
+        const tp = targetPoints[i]
+
+        // Stagger: 80-120ms per star, random within range
+        const stagger = STAGGER_MIN + Math.random() * (STAGGER_MAX - STAGGER_MIN)
+        const delay = i * stagger
+        const duration =
+          STAR_MIN_DURATION + Math.random() * (STAR_MAX_DURATION - STAR_MIN_DURATION)
+
+        activeStars.push({
+          ...bgStar,
+          startX: bgStar.x,
+          startY: bgStar.y,
+          targetX: tp.x,
+          targetY: tp.y,
+          delay: delay / 1000,
+          duration,
+          startSize: bgStar.size,
+          targetSize: bgStar.size * 2.2,
+          startBrightness: bgStar.targetOpacity * 0.3,
+          targetBrightness: 0.85 + Math.random() * 0.15,
+          letterIndex: tp.letterIndex,
+          arrived: false,
         })
       }
+
+      // Build constellation lines for after arrival
+      letterLines = buildLetterLines(targetPoints)
+
+      animationStartTime = performance.now() / 1000
     }
 
-    // Wait for the real webfont to finish loading before sampling its glyph
-    // shapes onto the canvas — otherwise the browser silently substitutes a
-    // fallback serif font with different proportions, producing crooked,
-    // misshapen initials. A short safety timeout guarantees we never hang.
+    const fontString = `500 ${OFFSCREEN_FONT_SIZE}px "Playfair Display"`
     let fallbackTimer = 0
     if (typeof document !== "undefined" && "fonts" in document) {
       fallbackTimer = window.setTimeout(populateInitialStars, 1500)
@@ -191,64 +414,119 @@ export function OpeningScene({ onComplete }: OpeningSceneProps) {
       populateInitialStars()
     }
 
+    const cubicOut = (t: number) => 1 - Math.pow(1 - t, 3)
+
     const animate = () => {
       ctx.fillStyle = "rgb(5, 5, 7)"
       ctx.fillRect(0, 0, width, height)
 
-      frame++
+      const now = performance.now() / 1000
+      const elapsed = animationStartTime > 0 ? now - animationStartTime : 0
 
-      if (reduced) {
-        for (const s of [...bgStars, ...stars]) {
-          s.opacity = s.targetOpacity
-        }
-        revealIndex = stars.length
-        bgRevealIndex = bgStars.length
-      } else {
-        if (bgRevealIndex < bgStars.length) {
-          const revealPerFrame = 4
-          for (let i = 0; i < revealPerFrame && bgRevealIndex < bgStars.length; i++) {
-            bgStars[bgRevealIndex].opacity = bgStars[bgRevealIndex].targetOpacity * 0.3
-            bgRevealIndex++
-          }
-        }
+      // Track whether all active stars have arrived
+      let arrivedCount = 0
 
-        if (revealIndex < stars.length) {
-          const revealPerFrame = reduced ? stars.length : 1
-          for (let i = 0; i < revealPerFrame && revealIndex < stars.length; i++) {
-            stars[revealIndex].opacity = stars[revealIndex].targetOpacity
-            revealIndex++
-          }
-        }
-      }
+      // Update and draw background stars (those not promoted to active)
+      const activeStarSet = new Set(
+        activeStars.map((s) => `${s.startX},${s.startY}`)
+      )
 
-      for (const s of bgStars) {
+      for (let i = 0; i < bgStars.length; i++) {
+        const s = bgStars[i]
+        // Skip stars that were promoted to active — they're drawn separately
+        if (activeStarSet.has(`${s.x},${s.y}`)) continue
+
         if (!reduced) {
           s.twinklePhase += s.twinkleSpeed
           const twinkle = (Math.sin(s.twinklePhase) + 1) / 2
           s.opacity = s.targetOpacity * 0.3 * (0.5 + twinkle * 0.5)
+        } else {
+          s.opacity = s.targetOpacity * 0.3
         }
+
         ctx.beginPath()
         ctx.arc(s.x, s.y, s.size, 0, Math.PI * 2)
         ctx.fillStyle = `rgba(232, 228, 255, ${s.opacity})`
         ctx.fill()
       }
 
-      for (const s of stars) {
-        if (!reduced) {
-          s.twinklePhase += s.twinkleSpeed
-          const twinkle = (Math.sin(s.twinklePhase) + 1) / 2
-          s.opacity = s.targetOpacity * (0.6 + twinkle * 0.4)
+      // Update and draw active stars
+      for (const s of activeStars) {
+        if (reduced) {
+          s.x = s.targetX
+          s.y = s.targetY
+          s.size = s.targetSize
+          s.opacity = s.targetBrightness
+          s.arrived = true
+          arrivedCount++
+        } else {
+          const localElapsed = elapsed - s.delay
+          if (localElapsed < 0) {
+            // Star hasn't started moving yet — draw at start position with bg brightness
+            s.x = s.startX
+            s.y = s.startY
+            s.size = s.startSize
+            s.opacity = s.startBrightness
+          } else {
+            const rawT = Math.min(1, localElapsed / s.duration)
+            const t = cubicOut(rawT)
+            s.x = s.startX + (s.targetX - s.startX) * t
+            s.y = s.startY + (s.targetY - s.startY) * t
+            s.size = s.startSize + (s.targetSize - s.startSize) * t
+            s.opacity = s.startBrightness + (s.targetBrightness - s.startBrightness) * t
+
+            // Twinkle
+            s.twinklePhase += s.twinkleSpeed
+            const twinkle = (Math.sin(s.twinklePhase) + 1) / 2
+            s.opacity *= 0.85 + twinkle * 0.15
+
+            if (rawT >= 1) {
+              s.arrived = true
+              arrivedCount++
+            }
+          }
         }
+
+        // Draw star
         ctx.beginPath()
         ctx.arc(s.x, s.y, s.size, 0, Math.PI * 2)
         ctx.fillStyle = `rgba(245, 217, 138, ${s.opacity})`
         ctx.fill()
 
-        if (s.opacity > 0.7) {
+        // Glow halo for bright stars
+        if (s.opacity > 0.5) {
           ctx.beginPath()
           ctx.arc(s.x, s.y, s.size * 2.5, 0, Math.PI * 2)
           ctx.fillStyle = `rgba(245, 217, 138, ${s.opacity * 0.1})`
           ctx.fill()
+        }
+      }
+
+      // Check if all active stars arrived
+      if (!allArrived && activeStars.length > 0 && arrivedCount === activeStars.length) {
+        allArrived = true
+        linesStartTime = performance.now()
+      }
+
+      // Draw constellation lines after all stars arrived
+      if (allArrived && letterLines.length > 0 && targetPoints.length > 0) {
+        const lineElapsed = performance.now() - linesStartTime
+        const lineProgress = Math.min(1, lineElapsed / LINE_FADE_DURATION)
+        const lineOpacity = LINE_MAX_OPACITY * cubicOut(lineProgress)
+
+        if (lineOpacity > 0) {
+          for (const line of letterLines) {
+            const from = activeStars[line.from]
+            const to = activeStars[line.to]
+            if (!from || !to) continue
+
+            ctx.beginPath()
+            ctx.moveTo(from.x, from.y)
+            ctx.lineTo(to.x, to.y)
+            ctx.strokeStyle = `rgba(245, 217, 138, ${lineOpacity})`
+            ctx.lineWidth = 0.5 * dpr
+            ctx.stroke()
+          }
         }
       }
 
