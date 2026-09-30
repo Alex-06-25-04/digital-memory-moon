@@ -40,10 +40,10 @@ interface LetterPoints {
 }
 
 const INITIALS = experienceConfig.couple.initials
-const BG_STAR_COUNT = 300
-const POINTS_PER_LETTER = 16
-const MIN_POINTS = 14
-const MAX_POINTS = 18
+const BG_STAR_COUNT = 600
+const POINTS_PER_LETTER = 45
+const MIN_POINTS = 40
+const MAX_POINTS = 50
 const OFFSCREEN_FONT_SIZE = 200
 const LINE_MAX_OPACITY = 0.35
 const LINE_FADE_DURATION = 800
@@ -65,7 +65,7 @@ function getLetterPoints(
   const offCtx = offCanvas.getContext("2d")
   if (!offCtx) return null
 
-  offCtx.font = `500 ${OFFSCREEN_FONT_SIZE}px "Playfair Display", Georgia, serif`
+  offCtx.font = `700 ${OFFSCREEN_FONT_SIZE}px "Playfair Display", Georgia, serif`
   offCtx.textAlign = "center"
   offCtx.textBaseline = "middle"
   offCtx.fillStyle = "#fff"
@@ -73,7 +73,7 @@ function getLetterPoints(
 
   const imageData = offCtx.getImageData(0, 0, canvasWidth, canvasHeight)
   const rawPoints: { x: number; y: number }[] = []
-  const step = 3
+  const step = 2
 
   let minX = Infinity
   let maxX = -Infinity
@@ -166,7 +166,7 @@ function getInitialsLayout(
   const measureCtx = measureCanvas.getContext("2d")
   if (!measureCtx) return { points: [], letters: [] }
 
-  const fontString = `500 ${OFFSCREEN_FONT_SIZE}px "Playfair Display", Georgia, serif`
+  const fontString = `700 ${OFFSCREEN_FONT_SIZE}px "Playfair Display", Georgia, serif`
   measureCtx.font = fontString
 
   const spacing = OFFSCREEN_FONT_SIZE * 0.15
@@ -200,7 +200,7 @@ function getInitialsLayout(
       // Scale from offscreen coordinates to display canvas coordinates
       const scaleX = displayWidth / offWidth
       const scaleY = displayHeight / offHeight
-      const scale = Math.min(scaleX, scaleY) * 0.85
+      const scale = Math.min(scaleX, scaleY) * 1.0
       const offsetX = (displayWidth - offWidth * scale) / 2
       const offsetY = (displayHeight - offHeight * scale) / 2
 
@@ -381,7 +381,7 @@ export function OpeningScene({ onComplete }: OpeningSceneProps) {
           delay: delay / 1000,
           duration,
           startSize: bgStar.size,
-          targetSize: bgStar.size * 2.2,
+          targetSize: bgStar.size * 2.5,
           startBrightness: bgStar.targetOpacity * 0.3,
           targetBrightness: 0.85 + Math.random() * 0.15,
           letterIndex: tp.letterIndex,
